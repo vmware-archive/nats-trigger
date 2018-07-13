@@ -17,12 +17,15 @@ limitations under the License.
 package utils
 
 import (
+	"os"
+	"path/filepath"
+
 	natsApi "github.com/kubeless/nats-trigger/pkg/apis/kubeless/v1beta1"
 	"github.com/sirupsen/logrus"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/kubeless/nats-trigger/pkg/client/clientset/versioned"
 )
@@ -58,6 +61,37 @@ func GetTriggerClientInCluster() (versioned.Interface, error) {
 	}
 
 	return kafkaClient, nil
+}
+
+// BuildOutOfClusterConfig returns k8s config
+func BuildOutOfClusterConfig() (*rest.Config, error) {
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	if kubeconfigPath == "" {
+		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
+		if home == "" {
+			for _, h := range []string{"HOME", "USERPROFILE"} {
+				if home = os.Getenv(h); home != "" {
+					break
+				}
+			}
+		}
+		kubeconfigPath = filepath.Join(home, ".kube", "config")
+	}
+	return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+}
+
+// GetKubelessClientOutCluster returns kubeless clientset to make kubeless API request from outside of cluster
+func GetKubelessClientOutCluster() (versioned.Interface, error) {
+	config, err := BuildOutOfClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	kubelessClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return kubelessClient, nil
 }
 
 // CreateNatsTriggerCustomResource will create a custom function object
