@@ -22,27 +22,10 @@ This release includes the following commits and features:\\n\
 $commits\\n\\n\
 To install this latest version, use the manifest that is part of the release:\\n\
 \\n\
-**WITH RBAC ENABLED:**\\n\
-\\n\
 \`\`\`console\\n\
-kubectl create ns kubeless\\n\
-kubectl create -f https://github.com/kubeless/kubeless/releases/download/$tag/kubeless-$tag.yaml \\n\
+kubectl create -f https://github.com/kubeless/nats-trigger/releases/download/$tag/nats-$tag.yaml \\n\
 \`\`\`\\n\
 \\n\
-**WITHOUT RBAC:**\\n\
-\\n\
-\`\`\`console\\n\
-kubectl create ns kubeless\\n\
-kubectl create -f https://github.com/kubeless/kubeless/releases/download/$tag/kubeless-non-rbac-$tag.yaml \\n\
-\`\`\`\\n\
-**OPENSHIFT:**\\n\
-\\n\
-\`\`\`console\\n\
-oc create ns kubeless\\n\
-oc create -f https://github.com/kubeless/kubeless/releases/download/$tag/kubeless-openshift-$tag.yaml \\n\
-# Kafka\\n\
-oc create -f https://github.com/kubeless/kubeless/releases/download/$tag/kafka-zookeeper-openshift-$tag.yaml \\n\
-\`\`\`\\n\
 ")
   echo "${notes}"
 }
