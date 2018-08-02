@@ -33,12 +33,10 @@ import (
 
 	kubelessApi "github.com/kubeless/kubeless/pkg/apis/kubeless/v1beta1"
 	kubelessversioned "github.com/kubeless/kubeless/pkg/client/clientset/versioned"
-	kubelessexternalversion "github.com/kubeless/kubeless/pkg/client/informers/externalversions"
 	kubelessInformers "github.com/kubeless/kubeless/pkg/client/informers/externalversions/kubeless/v1beta1"
 	kubelessutils "github.com/kubeless/kubeless/pkg/utils"
 	natsApi "github.com/kubeless/nats-trigger/pkg/apis/kubeless/v1beta1"
 	"github.com/kubeless/nats-trigger/pkg/client/clientset/versioned"
-	"github.com/kubeless/nats-trigger/pkg/client/informers/externalversions"
 	natsInformers "github.com/kubeless/nats-trigger/pkg/client/informers/externalversions/kubeless/v1beta1"
 	"github.com/kubeless/nats-trigger/pkg/event-consumers/nats"
 	"github.com/kubeless/nats-trigger/pkg/utils"
@@ -52,15 +50,17 @@ const (
 // NatsTriggerController object
 type NatsTriggerController struct {
 	logger           *logrus.Entry
-	kubelessclient   versioned.Interface
+	natsclient       versioned.Interface
+	kubelessclient   kubelessversioned.Interface
 	kubernetesClient kubernetes.Interface
 	queue            workqueue.RateLimitingInterface
-	natsInformer     natsInformers.NATSTriggerInformer
-	functionInformer kubelessInformers.FunctionInformer
+	natsInformer     cache.SharedIndexInformer
+	functionInformer cache.SharedIndexInformer
 }
 
 // NatsTriggerConfig contains config for NatsTriggerController
 type NatsTriggerConfig struct {
+	KubeCli        kubernetes.Interface
 	TriggerClient  versioned.Interface
 	KubelessClient kubelessversioned.Interface
 }
@@ -69,13 +69,16 @@ type NatsTriggerConfig struct {
 func NewNatsTriggerController(cfg NatsTriggerConfig) *NatsTriggerController {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
-	natsSharedInformers := externalversions.NewSharedInformerFactory(cfg.TriggerClient, 0)
-	natsInformer := natsSharedInformers.Kubeless().V1beta1().NATSTriggers()
+	config, err := kubelessutils.GetKubelessConfig(cfg.KubeCli, kubelessutils.GetAPIExtensionsClientInCluster())
+	if err != nil {
+		logrus.Fatalf("Unable to read the configmap: %s", err)
+	}
 
-	kubelessSharedInformers := kubelessexternalversion.NewSharedInformerFactory(cfg.KubelessClient, 0)
-	functionInformer := kubelessSharedInformers.Kubeless().V1beta1().Functions()
+	natsInformer := natsInformers.NewNATSTriggerInformer(cfg.TriggerClient, config.Data["functions-namespace"], 0, cache.Indexers{})
 
-	natsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	functionInformer := kubelessInformers.NewFunctionInformer(cfg.KubelessClient, config.Data["functions-namespace"], 0, cache.Indexers{})
+
+	natsInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -102,14 +105,15 @@ func NewNatsTriggerController(cfg NatsTriggerConfig) *NatsTriggerController {
 
 	controller := NatsTriggerController{
 		logger:           logrus.WithField("controller", "nats-trigger-controller"),
-		kubelessclient:   cfg.TriggerClient,
+		natsclient:       cfg.TriggerClient,
+		kubelessclient:   cfg.KubelessClient,
 		kubernetesClient: kubelessutils.GetClient(),
 		natsInformer:     natsInformer,
 		functionInformer: functionInformer,
 		queue:            queue,
 	}
 
-	functionInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	functionInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			controller.FunctionAddedDeletedUpdated(obj, false)
 		},
@@ -132,8 +136,8 @@ func (c *NatsTriggerController) Run(stopCh <-chan struct{}) {
 	c.logger.Info("Starting NATS Trigger controller")
 	defer c.logger.Info("Shutting down NATS Trigger controller")
 
-	go c.natsInformer.Informer().Run(stopCh)
-	go c.functionInformer.Informer().Run(stopCh)
+	go c.natsInformer.Run(stopCh)
+	go c.functionInformer.Run(stopCh)
 
 	if !c.waitForCacheSync(stopCh) {
 		return
@@ -143,7 +147,7 @@ func (c *NatsTriggerController) Run(stopCh <-chan struct{}) {
 }
 
 func (c *NatsTriggerController) waitForCacheSync(stopCh <-chan struct{}) bool {
-	if !cache.WaitForCacheSync(stopCh, c.natsInformer.Informer().HasSynced, c.functionInformer.Informer().HasSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.natsInformer.HasSynced, c.functionInformer.HasSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches required for NATS triggers controller to sync;"))
 		return false
 	}
@@ -188,7 +192,7 @@ func (c *NatsTriggerController) syncNatsTrigger(key string) error {
 		return err
 	}
 
-	obj, exists, err := c.natsInformer.Informer().GetIndexer().GetByKey(key)
+	obj, exists, err := c.natsInformer.GetIndexer().GetByKey(key)
 	if err != nil {
 		return fmt.Errorf("Error fetching object with key %s from store: %v", key, err)
 	}
@@ -219,16 +223,18 @@ func (c *NatsTriggerController) syncNatsTrigger(key string) error {
 			c.logger.Errorf("Failed to convert LabelSelector %v in NATS Trigger object %s to Selector due to %v: ", triggerObj.Spec.FunctionSelector, key, err)
 			return err
 		}
-		functions, err := c.functionInformer.Lister().Functions(ns).List(funcSelector)
+		functions, err := c.kubelessclient.KubelessV1beta1().Functions(ns).List(apimachineryHelpers.ListOptions{
+			LabelSelector: funcSelector.String(),
+		})
 		if err != nil {
 			c.logger.Errorf("Failed to list associated functions with NATS trigger %s by selector due to %s: ", key, err)
 			return err
 		}
-		if len(functions) == 0 {
+		if len(functions.Items) == 0 {
 			c.logger.Infof("No matching functions found for NATS trigger %s so marking CRD object for deleteion", key)
 		}
 
-		for _, function := range functions {
+		for _, function := range functions.Items {
 			funcName := function.ObjectMeta.Name
 			err = nats.DeleteNATSConsumer(triggerObjName, funcName, ns, topic)
 			if err != nil {
@@ -260,16 +266,18 @@ func (c *NatsTriggerController) syncNatsTrigger(key string) error {
 		c.logger.Errorf("Failed to convert LabelSelector %v in NATS Trigger object %s to Selector due to %v: ", triggerObj.Spec.FunctionSelector, key, err)
 		return err
 	}
-	functions, err := c.functionInformer.Lister().Functions(ns).List(funcSelector)
+	functions, err := c.kubelessclient.KubelessV1beta1().Functions(ns).List(apimachineryHelpers.ListOptions{
+		LabelSelector: funcSelector.String(),
+	})
 	if err != nil {
 		c.logger.Errorf("Failed to list associated functions with NATS trigger %s by Selector due to %s: ", key, err)
 	}
 
-	if len(functions) == 0 {
+	if len(functions.Items) == 0 {
 		c.logger.Infof("No matching functions with selector %v found in namespace %s", funcSelector, ns)
 	}
 
-	for _, function := range functions {
+	for _, function := range functions.Items {
 		funcName := function.ObjectMeta.Name
 		err = nats.CreateNATSConsumer(triggerObjName, funcName, ns, topic, c.kubernetesClient)
 		if err != nil {
@@ -298,13 +306,13 @@ func (c *NatsTriggerController) FunctionAddedDeletedUpdated(obj interface{}, del
 	}
 
 	c.logger.Infof("Processing update to function object %s Namespace: %s", functionObj.Name, functionObj.Namespace)
-	natsTriggers, err := c.natsInformer.Lister().NATSTriggers(functionObj.ObjectMeta.Namespace).List(labels.Everything())
+	natsTriggers, err := c.natsclient.KubelessV1beta1().NATSTriggers(functionObj.ObjectMeta.Namespace).List(apimachineryHelpers.ListOptions{})
 	if err != nil {
 		c.logger.Errorf("Failed to get list of NATS trigger in namespace %s due to %s: ", functionObj.ObjectMeta.Namespace, err)
 		return
 	}
 
-	for _, triggerObj := range natsTriggers {
+	for _, triggerObj := range natsTriggers.Items {
 		funcSelector, err := apimachineryHelpers.LabelSelectorAsSelector(&triggerObj.Spec.FunctionSelector)
 		if err != nil {
 			c.logger.Errorf("Failed to convert LabelSelector to Selector due to %s: ", err)
@@ -348,7 +356,7 @@ func (c *NatsTriggerController) natsTriggerHasFinalizer(triggercObj *natsApi.NAT
 func (c *NatsTriggerController) natsTriggerObjAddFinalizer(triggercObj *natsApi.NATSTrigger) error {
 	triggercObjClone := triggercObj.DeepCopy()
 	triggercObjClone.ObjectMeta.Finalizers = append(triggercObjClone.ObjectMeta.Finalizers, natsTriggerFinalizer)
-	return utils.UpdateNatsTriggerCustomResource(c.kubelessclient, triggercObjClone)
+	return utils.UpdateNatsTriggerCustomResource(c.natsclient, triggercObjClone)
 }
 
 func (c *NatsTriggerController) natsTriggerObjRemoveFinalizer(triggercObj *natsApi.NATSTrigger) error {
@@ -364,7 +372,7 @@ func (c *NatsTriggerController) natsTriggerObjRemoveFinalizer(triggercObj *natsA
 		newSlice = nil
 	}
 	triggercObjClone.ObjectMeta.Finalizers = newSlice
-	err := utils.UpdateNatsTriggerCustomResource(c.kubelessclient, triggercObjClone)
+	err := utils.UpdateNatsTriggerCustomResource(c.natsclient, triggercObjClone)
 	if err != nil {
 		return err
 	}
