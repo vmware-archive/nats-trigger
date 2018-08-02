@@ -50,6 +50,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		natsTriggerCfg := controller.NatsTriggerConfig{
+			KubeCli:        kubelessutils.GetClient(),
 			TriggerClient:  natsClient,
 			KubelessClient: kubelessClient,
 		}

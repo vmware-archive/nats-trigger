@@ -18,9 +18,21 @@ local crd = [
   },
 ];
 
+local controllerEnv = [
+  {
+     name: "KUBELESS_NAMESPACE",
+     valueFrom: {fieldRef: {fieldPath: "metadata.namespace"}}
+   },
+   {
+     name: "KUBELESS_CONFIG",
+     value: "kubeless-config"
+   },
+];
+
 local controllerContainer =
   container.default("nats-trigger-controller", "bitnami/nats-trigger-controller:latest") +
-  container.imagePullPolicy("IfNotPresent");
+  container.imagePullPolicy("IfNotPresent") +
+  container.env(controllerEnv);
 
 local kubelessLabel = {kubeless: "nats-trigger-controller"};
 
