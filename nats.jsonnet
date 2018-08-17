@@ -14,7 +14,6 @@ local crd = [
     kind: "CustomResourceDefinition",
     metadata: objectMeta.name("natstriggers.kubeless.io"),
     spec: {group: "kubeless.io", version: "v1beta1", scope: "Namespaced", names: {plural: "natstriggers", singular: "natstrigger", kind: "NATSTrigger"}},
-    description: "CRD object for NATS trigger type",
   },
 ];
 
