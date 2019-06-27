@@ -120,7 +120,7 @@ func DeleteNATSConsumer(triggerObjName, funcName, ns, topic string) error {
 		delete(consumerM, queueGroupID)
 		logrus.Infof("Stopped consumer for the function %s associated with for trigger %s", funcName, triggerObjName)
 	} else {
-		logrus.Infof("Consumer for function %s associated with trigger does n't exists. Good enough to skip the stop", funcName, triggerObjName)
+		logrus.Infof("Consumer for function %s associated with trigger %s doesn't exists. Good enough to skip the stop", funcName, triggerObjName)
 	}
 	return nil
 }
