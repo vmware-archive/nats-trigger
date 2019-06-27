@@ -9,20 +9,19 @@ defaults: &defaults
   working_directory: /home/circleci/.go_workspace/src/github.com/kubeless/nats-trigger
   environment:
     GOPATH: /home/circleci/.go_workspace
-    CONTROLLER_IMAGE_NAME: bitnami/kubeless-controller-manager
-    NATS_CONTROLLER_IMAGE_NAME: bitnami/nats-trigger-controller
+    NATS_CONTROLLER_IMAGE_NAME: kubeless/nats-trigger-controller
     CGO_ENABLED: "0"
     TEST_DEBUG: "1"
     GKE_VERSION: 1.8.10-gke.0
-    MINIKUBE_VERSION: v0.25.2
+    MINIKUBE_VERSION: v1.2.0
     MANIFESTS: nats
+    GO111MODULE: "on"
 exports: &exports
   # It is not possible to resolve env vars in the environment section:
   # https://discuss.circleci.com/t/using-environment-variables-in-config-yml-not-working/14237
   run: |
     CONTROLLER_TAG=${CIRCLE_TAG:-build-$CIRCLE_WORKFLOW_ID}
     echo "export CONTROLLER_TAG=${CONTROLLER_TAG}" >> $BASH_ENV
-    echo "export CONTROLLER_IMAGE=${CONTROLLER_IMAGE_NAME}:${CONTROLLER_TAG}" >> $BASH_ENV
     echo "export NATS_CONTROLLER_IMAGE=${NATS_CONTROLLER_IMAGE_NAME}:${CONTROLLER_TAG}" >> $BASH_ENV
     echo "export KUBECFG_JPATH=/home/circleci/src/github.com/kubeless/kubeless/ksonnet-lib" >> $BASH_ENV
     echo "export PATH=$(pwd)/bats/libexec:$PATH" >> $BASH_ENV
@@ -80,7 +79,7 @@ jobs:
   build:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.9 
+      - image: circleci/golang:1.12
     steps:
       - checkout
       - <<: *exports
@@ -102,7 +101,7 @@ jobs:
       - run: |
           IFS=' ' read -r -a manifests <<< "$MANIFESTS"
           for f in "${manifests[@]}"; do
-            sed -i.bak 's/:latest/'":${CONTROLLER_TAG}"'/g' ${f}.yaml
+            sed -E -i.bak 's/image: .*\/nats-trigger-controller:.*/image: kubeless\/nats-trigger-controller:'"${CONTROLLER_TAG}"'/g' ${f}.yaml
             cp ${f}.yaml build-manifests/
           done
       - persist_to_workspace:
@@ -116,7 +115,8 @@ jobs:
           path: build-manifests
   minikube_nats:
     <<: *defaults
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     steps:
       - <<: *should_test
       - checkout
@@ -130,7 +130,7 @@ jobs:
   push_latest_images:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.9 
+      - image: circleci/golang:1.12
     steps:
       - <<: *exports
       - setup_remote_docker
@@ -148,7 +148,7 @@ jobs:
   release:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.9 
+      - image: circleci/golang:1.12
     steps:
       - <<: *exports
       - checkout
