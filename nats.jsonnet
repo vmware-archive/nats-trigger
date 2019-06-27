@@ -29,7 +29,7 @@ local controllerEnv = [
 ];
 
 local controllerContainer =
-  container.default("nats-trigger-controller", "bitnami/nats-trigger-controller:latest") +
+  container.default("nats-trigger-controller", "kubeless/nats-trigger-controller:latest") +
   container.imagePullPolicy("IfNotPresent") +
   container.env(controllerEnv);
 
