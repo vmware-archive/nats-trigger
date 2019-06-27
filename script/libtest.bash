@@ -303,7 +303,7 @@ deploy_kafka() {
 
 deploy_nats_operator() {
     echo_info "Deploy NATS operator ... "
-    kubectl apply -f kubectl apply -f https://github.com/nats-io/nats-operator/releases/download/v0.2.2/deployment-rbac.yaml
+    kubectl apply -f https://github.com/nats-io/nats-operator/releases/download/v0.2.2/deployment-rbac.yaml
 }
 
 deploy_nats_cluster() {
