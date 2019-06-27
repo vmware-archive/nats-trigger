@@ -115,7 +115,8 @@ jobs:
           path: build-manifests
   minikube_nats:
     <<: *defaults
-    machine: true
+    machine:
+      image: ubuntu-1604:201903-01
     steps:
       - <<: *should_test
       - checkout
