@@ -21,8 +21,8 @@ import (
 
 	"sync"
 
-	"github.com/kubeless/kubeless/pkg/utils"
-	"github.com/nats-io/go-nats"
+	"github.com/kubeless/nats-trigger/pkg/utils"
+	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 )

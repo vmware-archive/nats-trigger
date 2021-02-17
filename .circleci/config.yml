@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 ## Definitions
 build_allways: &build_allways
@@ -13,7 +13,7 @@ defaults: &defaults
     CGO_ENABLED: "0"
     TEST_DEBUG: "1"
     GKE_VERSION: 1.8.10-gke.0
-    MINIKUBE_VERSION: v1.2.0
+    MINIKUBE_VERSION: v1.17.0
     MANIFESTS: nats
     GO111MODULE: "on"
 exports: &exports
@@ -79,7 +79,7 @@ jobs:
   build:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - checkout
       - <<: *exports
@@ -130,7 +130,7 @@ jobs:
   push_latest_images:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - <<: *exports
       - setup_remote_docker
@@ -148,7 +148,7 @@ jobs:
   release:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - <<: *exports
       - checkout
