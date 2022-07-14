@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 ## Definitions
 build_allways: &build_allways
@@ -6,16 +6,16 @@ build_allways: &build_allways
     tags:
       only: /.*/
 defaults: &defaults
-  working_directory: /home/circleci/.go_workspace/src/github.com/kubeless/nats-trigger
+  # working_directory: /home/circleci/.go_workspace/src/github.com/kubeless/nats-trigger
   environment:
-    GOPATH: /home/circleci/.go_workspace
+    # GOPATH: /home/circleci/.go_workspace
     NATS_CONTROLLER_IMAGE_NAME: kubeless/nats-trigger-controller
     CGO_ENABLED: "0"
     TEST_DEBUG: "1"
     GKE_VERSION: 1.8.10-gke.0
-    MINIKUBE_VERSION: v1.2.0
+    MINIKUBE_VERSION: v1.17.0
     MANIFESTS: nats
-    GO111MODULE: "on"
+    # GO111MODULE: "on"
 exports: &exports
   # It is not possible to resolve env vars in the environment section:
   # https://discuss.circleci.com/t/using-environment-variables-in-config-yml-not-working/14237
@@ -61,6 +61,12 @@ workflows:
           <<: *build_allways
           requires:
             - build
+          matrix:
+            parameters:
+              # Amazon EKS Kubernetes versions.
+              # See https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html
+              k8s-version:
+                - v1.19.7
       - push_latest_images:
           filters:
             branches:
@@ -79,7 +85,7 @@ jobs:
   build:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - checkout
       - <<: *exports
@@ -130,7 +136,7 @@ jobs:
   push_latest_images:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - <<: *exports
       - setup_remote_docker
@@ -148,7 +154,7 @@ jobs:
   release:
     <<: *defaults
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.15
     steps:
       - <<: *exports
       - checkout
